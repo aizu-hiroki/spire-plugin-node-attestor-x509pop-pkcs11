@@ -1,0 +1,16 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+nodeattestor-pkcs11-agent
+nodeattestor-pkcs11-server
+out/
+
+# Test binary
+*.test
+
+# Go workspace
+go.work
+go.work.sum
