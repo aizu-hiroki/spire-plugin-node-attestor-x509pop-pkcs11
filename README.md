@@ -4,6 +4,8 @@ A [SPIRE](https://github.com/spiffe/spire) node attestation plugin that uses PKC
 
 Enables hardware-backed node identity via PKCS#11 tokens (HSM, smartcard, YubiKey) — the primary option for macOS nodes where TPM-based attestation is not available.
 
+> **Experimental:** This is an unofficial, community project. It is not affiliated with or endorsed by the SPIFFE/SPIRE project, CNCF, or any hardware vendor. Use in production at your own risk.
+
 ## Overview
 
 Standard x509pop reads the private key from a PEM file.  This plugin keeps the private key inside a PKCS#11 token so it never leaves the hardware boundary.  The attestation flow is identical to x509pop — the only difference is *where* the signing key lives.
