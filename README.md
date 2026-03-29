@@ -183,13 +183,10 @@ SoftHSM2-dependent tests are automatically skipped when the library is not found
 
 ## Supported hardware
 
-Any PKCS#11-compliant device should work.  Tested / known-compatible:
-
-| Device | PKCS#11 library |
-|--------|----------------|
-| SoftHSM2 (software) | `libsofthsm2.so` |
-| YubiKey 5 (PIV) | `libykcs11.so` |
-| Thales Luna | vendor library |
+Any PKCS#11-compliant device should work provided it exposes `CKM_ECDSA` or
+`CKM_RSA_PKCS`.  SoftHSM2 is the only device verified by the automated test
+suite.  See [docs/hardware_setup.md](docs/hardware_setup.md) for generic setup
+instructions.
 
 ---
 
