@@ -2,6 +2,8 @@
 
 A [SPIRE](https://github.com/spiffe/spire) node attestation plugin that uses PKCS#11-backed private keys (HSM, smartcard, YubiKey, or SoftHSM2) for [X.509 Proof-of-Possession](https://github.com/spiffe/spire/blob/main/doc/plugin_server_nodeattestor_x509pop.md) (x509pop) node attestation.
 
+Enables hardware-backed node identity via PKCS#11 tokens (HSM, smartcard, YubiKey) — the primary option for macOS nodes where TPM-based attestation is not available.
+
 ## Overview
 
 Standard x509pop reads the private key from a PEM file.  This plugin keeps the private key inside a PKCS#11 token so it never leaves the hardware boundary.  The attestation flow is identical to x509pop — the only difference is *where* the signing key lives.
