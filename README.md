@@ -193,6 +193,17 @@ Any PKCS#11-compliant device should work.  Tested / known-compatible:
 
 ---
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/architecture.md](docs/architecture.md) | Internal design, No CGo approach, attestation flow |
+| [docs/pkcs11_abi.md](docs/pkcs11_abi.md) | PKCS#11 ABI cross-platform details (CK_ULONG, struct packing) |
+| [docs/hardware_setup.md](docs/hardware_setup.md) | YubiKey, Thales Luna, AWS CloudHSM setup |
+| [docs/node_attestation_flowchart.md](docs/node_attestation_flowchart.md) | Sequence diagram |
+
+---
+
 ## License
 
 [Apache 2.0](LICENSE)
