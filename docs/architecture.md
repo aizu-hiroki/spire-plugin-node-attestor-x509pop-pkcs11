@@ -133,3 +133,42 @@ The server plugin uses the same key-type-aware hash selection for verification.
 - The private key **never leaves the token**. Only the digest is sent to the HSM for signing.
 - The PIN is held in memory only for the duration of `C_Login`. Use `pin_env` in production to avoid storing it in config files.
 - Each SPIRE agent holds its own token and certificate. The SPIFFE ID is bound to the SHA-256 fingerprint of the leaf certificate.
+
+---
+
+## Certificate rotation
+
+Because the SPIFFE ID is derived from the SHA-256 fingerprint of the leaf certificate, renewing the certificate changes the SPIFFE ID. The recommended pattern is to interpose a CN/SAN-based registration entry between the agent SPIFFE ID and workload entries, so that workload entries survive certificate rotation without modification.
+
+```
+Agent SPIFFE ID  (changes on renewal)
+  └── node entry  — selector: subject:cn:<hostname>  ← stable alias
+        └── workload entry A
+        └── workload entry B
+```
+
+**Creating the entries:**
+
+```bash
+# 1. Node alias entry — matched by CN, not by certificate fingerprint
+spire-server entry create \
+  -spiffeID spiffe://example.org/node/prod-node-01 \
+  -selector x509pop_pkcs11:subject:cn:prod-node-01 \
+  -parentID spiffe://example.org/spire/agent/x509pop_pkcs11/<hash>
+
+# 2. Workload entry — parent is the stable node alias
+spire-server entry create \
+  -spiffeID spiffe://example.org/workload/db-client \
+  -parentID spiffe://example.org/node/prod-node-01 \
+  -selector unix:uid:1000
+```
+
+**On certificate renewal:**
+
+1. Replace the certificate on the HSM / token.
+2. Restart the SPIRE agent.
+3. The agent re-attests with a new SPIFFE ID (new fingerprint).
+4. The node alias entry re-matches via the CN selector — no entry update needed.
+5. All downstream workload entries remain valid.
+
+> **Note:** Keep CN values unique across nodes and issue them from a controlled CA to prevent a compromised node from claiming another node's identity.
