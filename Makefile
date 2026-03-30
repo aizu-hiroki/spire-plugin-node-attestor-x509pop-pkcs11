@@ -5,7 +5,7 @@ GOOS   ?= linux
 GOARCH ?= amd64
 OUT    ?= bin
 
-.PHONY: all build test lint clean
+.PHONY: all build test lint clean test-yubikey
 
 all: build
 
@@ -27,6 +27,24 @@ test:
 
 lint:
 	golangci-lint run ./...
+
+# test-yubikey runs integration tests that require a physical YubiKey 5 series
+# connected via USB. PIV slot 9a will be overwritten with a freshly generated
+# test key and certificate.
+#
+# Prerequisites (see docs/hardware_setup.md — YubiKey 5 Series section):
+#   macOS:   brew install yubico-yubikey-manager yubico-piv-tool
+#   Linux:   apt install yubikey-manager yubico-piv-tool
+#   Windows: install Yubico PIV Tool + YubiKey Manager from yubico.com
+#
+# Optional env vars:
+#   YUBIKEY_PIN — PIV PIN (default: 123456)
+#
+# Example:
+#   make test-yubikey
+#   YUBIKEY_PIN=mypin make test-yubikey
+test-yubikey:
+	CGO_ENABLED=1 go test -tags yubikey -v -count=1 -timeout 120s ./...
 
 clean:
 	rm -rf $(OUT)
