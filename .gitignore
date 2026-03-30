@@ -4,8 +4,9 @@
 *.dll
 *.so
 *.dylib
-nodeattestor-pkcs11-agent
-nodeattestor-pkcs11-server
+/nodeattestor-pkcs11-agent
+/nodeattestor-pkcs11-server
+bin/
 out/
 
 # Test binary
