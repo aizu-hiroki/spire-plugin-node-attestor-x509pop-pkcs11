@@ -1,10 +1,26 @@
 # spire-plugin-node-attestor-x509pop-pkcs11
 
+![Test](https://github.com/aizu-hiroki/spire-plugin-node-attestor-x509pop-pkcs11/actions/workflows/test.yml/badge.svg)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](go.mod)
+
+> **⚠️ EXPERIMENTAL — USE AT YOUR OWN RISK**
+>
+> This project is experimental and provided "as-is" without any warranty or
+> guarantee of any kind. It has not been audited for security and is not
+> intended for production use. The authors and contributors accept no
+> responsibility or liability for any damages, data loss, security incidents,
+> or other consequences arising from the use of this software. **You use this
+> software entirely at your own risk.**
+
+> This is an **unofficial** community plugin and is not affiliated with or
+> endorsed by SPIFFE, SPIRE, the CNCF, or any hardware vendor.
+
+---
+
 A [SPIRE](https://github.com/spiffe/spire) node attestation plugin that uses PKCS#11-backed private keys (HSM, smartcard, YubiKey, or SoftHSM2) for [X.509 Proof-of-Possession](https://github.com/spiffe/spire/blob/main/doc/plugin_server_nodeattestor_x509pop.md) (x509pop) node attestation.
 
 Enables hardware-backed node identity via PKCS#11 tokens (HSM, smartcard, YubiKey) — the primary option for macOS nodes where TPM-based attestation is not available.
-
-> **Experimental:** This is an unofficial, community project. It is not affiliated with or endorsed by the SPIFFE/SPIRE project, CNCF, or any hardware vendor. Use in production at your own risk.
 
 ## Overview
 
