@@ -216,7 +216,7 @@ instructions.
 |----------|-------------|
 | [docs/architecture.md](docs/architecture.md) | Internal design, No CGo approach, attestation flow |
 | [docs/pkcs11_abi.md](docs/pkcs11_abi.md) | PKCS#11 ABI cross-platform details (CK_ULONG, struct packing) |
-| [docs/hardware_setup.md](docs/hardware_setup.md) | YubiKey, Thales Luna, AWS CloudHSM setup |
+| [docs/hardware_setup.md](docs/hardware_setup.md) | YubiKey 5 Series, SoftHSM2, and generic PKCS#11 device setup |
 | [docs/node_attestation_flowchart.md](docs/node_attestation_flowchart.md) | Sequence diagram |
 
 ---
