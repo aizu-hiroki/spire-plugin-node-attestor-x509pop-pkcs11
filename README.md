@@ -54,7 +54,7 @@ Agent (PKCS#11 token)              Server
 
 | Component | Version |
 |-----------|---------|
-| Go        | 1.21+   |
+| Go        | 1.26+   |
 | SPIRE     | 1.x     |
 | PKCS#11 library | SoftHSM2, YubiKey PKCS#11, or any compliant library |
 
