@@ -136,9 +136,6 @@ key_id = "01"`},
 		{"missing token_label", `module_path = "/x"
 certificate_path = "/x"
 key_id = "01"`},
-		{"missing certificate_path", `module_path = "/x"
-token_label = "t"
-key_id = "01"`},
 		{"missing key_id and key_label", `module_path = "/x"
 token_label = "t"
 certificate_path = "/x"`},
@@ -153,6 +150,74 @@ certificate_path = "/x"`},
 				t.Fatal("expected error, got nil")
 			}
 		})
+	}
+}
+
+// TestAidAttestation_PKCS11Cert verifies the full attestation flow when the
+// certificate is loaded from the PKCS#11 token (no certificate_path in config).
+func TestAidAttestation_PKCS11Cert(t *testing.T) {
+	env := pkcs11test.SetupSoftHSM(t)
+
+	if !env.CertImportedToToken {
+		t.Skip("pkcs11-tool not in PATH; cert not imported to token — skipping PKCS#11 cert test")
+	}
+
+	plug := agent.New()
+	t.Cleanup(plug.Close)
+	// certificate_path is intentionally omitted — cert must come from PKCS#11.
+	hclConfig := `
+		module_path = "` + strings.ReplaceAll(env.ModulePath, `\`, `/`) + `"
+		token_label = "` + env.TokenLabel + `"
+		pin         = "` + env.PIN + `"
+		key_id      = "01"
+		key_label   = "` + env.KeyLabel + `"
+	`
+	_, err := plug.Configure(context.Background(), &configv1.ConfigureRequest{
+		HclConfiguration: hclConfig,
+	})
+	if err != nil {
+		t.Fatalf("Configure failed: %v", err)
+	}
+
+	nonce := []byte("pkcs11-cert-test-nonce-1234567890")
+	stream := &fakeAidAttestationStream{challenge: nonce}
+
+	if err := plug.AidAttestation(stream); err != nil {
+		t.Fatalf("AidAttestation failed: %v", err)
+	}
+
+	if len(stream.sent) != 2 {
+		t.Fatalf("expected 2 sent messages, got %d", len(stream.sent))
+	}
+
+	payloadBytes := stream.sent[0].GetPayload()
+	var payload struct {
+		Certificates [][]byte `json:"certificates"`
+	}
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if len(payload.Certificates) != 1 {
+		t.Fatalf("expected 1 certificate, got %d", len(payload.Certificates))
+	}
+	leaf, err := x509.ParseCertificate(payload.Certificates[0])
+	if err != nil {
+		t.Fatalf("parse certificate from payload: %v", err)
+	}
+	if leaf.Subject.CommonName != "test-node" {
+		t.Errorf("leaf CN = %q, want %q", leaf.Subject.CommonName, "test-node")
+	}
+
+	var resp struct {
+		Signature []byte `json:"signature"`
+	}
+	if err := json.Unmarshal(stream.sent[1].GetChallengeResponse(), &resp); err != nil {
+		t.Fatalf("unmarshal challenge response: %v", err)
+	}
+	digest := sha256.Sum256(nonce)
+	pub := leaf.PublicKey.(*ecdsa.PublicKey)
+	if !ecdsa.VerifyASN1(pub, digest[:], resp.Signature) {
+		t.Fatal("challenge response signature verification failed")
 	}
 }
 

@@ -66,10 +66,12 @@ type Config struct {
 
 // Client wraps a PKCS#11 session and provides a crypto.Signer.
 type Client struct {
-	mod     *Module
-	session CK_ULONG
-	privKey CK_ULONG
-	pubKey  crypto.PublicKey
+	mod      *Module
+	session  CK_ULONG
+	privKey  CK_ULONG
+	pubKey   crypto.PublicKey
+	keyID    []byte
+	keyLabel string
 }
 
 // NewClient opens a PKCS#11 session, logs in, and locates the signing key.
@@ -142,10 +144,12 @@ func NewClient(cfg *Config) (*Client, error) {
 	}
 
 	return &Client{
-		mod:     mod,
-		session: session,
-		privKey: privKey,
-		pubKey:  pubKey,
+		mod:      mod,
+		session:  session,
+		privKey:  privKey,
+		pubKey:   pubKey,
+		keyID:    cfg.KeyID,
+		keyLabel: cfg.KeyLabel,
 	}, nil
 }
 
@@ -451,6 +455,35 @@ func extractRSAPublicKey(mod *Module, session, obj CK_ULONG) (*rsa.PublicKey, er
 		return nil, fmt.Errorf("RSA public exponent too large")
 	}
 	return &rsa.PublicKey{N: n, E: int(e.Int64())}, nil
+}
+
+// LoadCertificate locates a CKO_CERTIFICATE object by CKA_ID and/or CKA_LABEL
+// and returns the raw DER certificate bytes from CKA_VALUE.
+func LoadCertificate(mod *Module, session CK_ULONG, certID []byte, certLabel string) ([]byte, error) {
+	obj, err := findObject(mod, session, CKO_CERTIFICATE, certID, certLabel)
+	if err != nil {
+		return nil, fmt.Errorf("find certificate object: %w", err)
+	}
+	der, err := readAttribute(mod, session, obj, CKA_VALUE)
+	if err != nil {
+		return nil, fmt.Errorf("read certificate DER (CKA_VALUE): %w", err)
+	}
+	if len(der) == 0 {
+		return nil, fmt.Errorf("certificate CKA_VALUE is empty (object handle 0x%x)", obj)
+	}
+	return der, nil
+}
+
+// LoadCertificate finds a CKO_CERTIFICATE object in the open session by
+// CKA_ID and/or CKA_LABEL and returns the DER-encoded certificate bytes.
+// If certID is nil and certLabel is empty, the Client's own keyID and keyLabel
+// are used (PKCS#11 convention: cert and private key share the same CKA_ID).
+func (c *Client) LoadCertificate(certID []byte, certLabel string) ([]byte, error) {
+	id, label := certID, certLabel
+	if len(id) == 0 && label == "" {
+		id, label = c.keyID, c.keyLabel
+	}
+	return LoadCertificate(c.mod, c.session, id, label)
 }
 
 // oidToCurve maps a DER-encoded EC curve OID to an elliptic.Curve.

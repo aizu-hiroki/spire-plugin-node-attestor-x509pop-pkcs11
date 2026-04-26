@@ -44,6 +44,10 @@ type TestEnv struct {
 	// LeafKey is the ECDSA private key (used for generating the cert and
 	// imported into the SoftHSM2 token).
 	LeafKey *ecdsa.PrivateKey
+
+	// CertImportedToToken is true when the leaf certificate was also written
+	// into the token as a CKO_CERTIFICATE object (requires pkcs11-tool).
+	CertImportedToToken bool
 }
 
 // SetupSoftHSM creates a temporary SoftHSM2 token, generates a self-signed CA
@@ -159,17 +163,45 @@ func SetupSoftHSM(t *testing.T) *TestEnv {
 		t.Fatalf("softhsm2-util import: %v\n%s", err, out)
 	}
 
+	// Attempt to import the leaf certificate into the token as CKO_CERTIFICATE.
+	// Requires pkcs11-tool (OpenSC); skipped silently when absent so that
+	// existing key-only tests still pass in environments without OpenSC.
+	certImported := false
+	if _, lookErr := exec.LookPath("pkcs11-tool"); lookErr == nil {
+		certDERPath := filepath.Join(tmpDir, "leaf.cert.der")
+		if writeErr := os.WriteFile(certDERPath, leafCertDER, 0o644); writeErr != nil {
+			t.Logf("SetupSoftHSM: write cert DER: %v (cert import skipped)", writeErr)
+		} else {
+			importOut, importErr := exec.Command(
+				"pkcs11-tool",
+				"--module", modulePath,
+				"--token-label", tokenLabel,
+				"--login", "--pin", pin,
+				"--write-object", certDERPath,
+				"--type", "cert",
+				"--id", keyID,
+				"--label", keyLabel,
+			).CombinedOutput()
+			if importErr != nil {
+				t.Logf("SetupSoftHSM: pkcs11-tool cert import: %v\n%s (cert import skipped)", importErr, importOut)
+			} else {
+				certImported = true
+			}
+		}
+	}
+
 	return &TestEnv{
-		ModulePath:  modulePath,
-		TokenLabel:  tokenLabel,
-		PIN:         pin,
-		KeyID:       []byte{0x01},
-		KeyLabel:    keyLabel,
-		CACert:      caCert,
-		CACertDER:   caCertDER,
-		LeafCert:    leafCert,
-		LeafCertDER: leafCertDER,
-		LeafKey:     leafKey,
+		ModulePath:          modulePath,
+		TokenLabel:          tokenLabel,
+		PIN:                 pin,
+		KeyID:               []byte{0x01},
+		KeyLabel:            keyLabel,
+		CACert:              caCert,
+		CACertDER:           caCertDER,
+		LeafCert:            leafCert,
+		LeafCertDER:         leafCertDER,
+		LeafKey:             leafKey,
+		CertImportedToToken: certImported,
 	}
 }
 
@@ -181,8 +213,28 @@ func findSoftHSMLib(t *testing.T) string {
 			return p
 		}
 	}
+	// Also search versioned Cellar paths on macOS (Homebrew does not always
+	// create a symlink under /usr/local/lib/softhsm/).
+	for _, pattern := range softHSMGlobs() {
+		matches, _ := filepath.Glob(pattern)
+		if len(matches) > 0 {
+			return matches[0]
+		}
+	}
 	t.Skipf("softhsm2 library not found at expected paths: %v", candidates)
 	return ""
+}
+
+func softHSMGlobs() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{
+			"/usr/local/Cellar/softhsm/*/lib/softhsm/libsofthsm2.so",
+			"/opt/homebrew/Cellar/softhsm/*/lib/softhsm/libsofthsm2.so",
+		}
+	default:
+		return nil
+	}
 }
 
 func softHSMCandidates() []string {

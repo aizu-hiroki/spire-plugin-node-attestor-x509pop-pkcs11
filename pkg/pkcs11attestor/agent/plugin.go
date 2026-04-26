@@ -3,13 +3,15 @@
 //
 // This plugin runs inside the SPIRE agent process.  When the agent needs to
 // attest itself to the SPIRE server it:
-//  1. Loads the X.509 certificate chain from PEM files
+//  1. Loads the X.509 certificate chain — either from PEM files
+//     (certificate_path / intermediates_path) or from the PKCS#11 token
+//     (CKO_CERTIFICATE objects identified by cert_id / cert_label)
 //  2. Sends the certificate chain to the server
 //  3. Receives a nonce challenge from the server
 //  4. Signs the nonce using the private key stored on a PKCS#11 token (HSM)
 //  5. Returns the signature to the server
 //
-// HCL configuration example (spire-agent.conf):
+// HCL configuration example — file-based certificate (existing behaviour):
 //
 //	NodeAttestor "x509pop_pkcs11" {
 //	  plugin_cmd  = "/usr/local/bin/spire-plugin-pkcs11-agent"
@@ -20,6 +22,21 @@
 //	    key_id           = "01"
 //	    key_label        = "node-key"
 //	    certificate_path = "/opt/spire/conf/agent/agent.crt.pem"
+//	  }
+//	}
+//
+// HCL configuration example — PKCS#11 certificate (certificate stored on token):
+//
+//	NodeAttestor "x509pop_pkcs11" {
+//	  plugin_cmd  = "/usr/local/bin/spire-plugin-pkcs11-agent"
+//	  plugin_data {
+//	    module_path = "/usr/lib/softhsm/libsofthsm2.so"
+//	    token_label = "spire-node"
+//	    pin         = "1234"
+//	    key_id      = "01"
+//	    key_label   = "node-key"
+//	    # certificate_path omitted — leaf cert loaded from PKCS#11 token
+//	    # using the same key_id / key_label as the private key.
 //	  }
 //	}
 package agent
@@ -50,12 +67,24 @@ type pluginConfig struct {
 	TokenLabel string `hcl:"token_label"`
 	PIN        string `hcl:"pin"`
 	PINEnv     string `hcl:"pin_env"`
-	KeyID      string `hcl:"key_id"`      // hex-encoded CKA_ID
+	KeyID      string `hcl:"key_id"`   // hex-encoded CKA_ID
 	KeyLabel   string `hcl:"key_label"`
 
-	// Certificate paths.
+	// File-based certificate paths (optional; existing behaviour).
 	CertificatePath   string `hcl:"certificate_path"`
 	IntermediatesPath string `hcl:"intermediates_path"`
+
+	// PKCS#11 certificate identifiers (optional).
+	// When certificate_path is empty, the leaf cert is loaded from the token.
+	// If cert_id and cert_label are also empty, key_id / key_label are used
+	// as the fallback (standard PKCS#11 convention: cert shares CKA_ID with key).
+	CertID    string `hcl:"cert_id"`
+	CertLabel string `hcl:"cert_label"`
+
+	// PKCS#11 intermediate certificate identifiers (optional).
+	// Used when intermediates_path is empty and the intermediate cert is on the token.
+	IntermediatesID    string `hcl:"intermediates_id"`
+	IntermediatesLabel string `hcl:"intermediates_label"`
 }
 
 // Plugin is the agent-side x509pop_pkcs11 node attestation plugin.
@@ -91,18 +120,17 @@ func (p *Plugin) Configure(_ context.Context, req *configv1.ConfigureRequest) (*
 	if cfg.TokenLabel == "" {
 		return nil, status.Error(codes.InvalidArgument, "token_label is required")
 	}
-	if cfg.CertificatePath == "" {
-		return nil, status.Error(codes.InvalidArgument, "certificate_path is required")
-	}
 	if cfg.KeyID == "" && cfg.KeyLabel == "" {
 		return nil, status.Error(codes.InvalidArgument,
 			"at least one of key_id or key_label is required")
 	}
 
 	// Validate that certificate files exist before opening the PKCS#11 session.
-	if _, err := os.Stat(cfg.CertificatePath); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument,
-			"certificate_path %q: %v", cfg.CertificatePath, err)
+	if cfg.CertificatePath != "" {
+		if _, err := os.Stat(cfg.CertificatePath); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"certificate_path %q: %v", cfg.CertificatePath, err)
+		}
 	}
 	if cfg.IntermediatesPath != "" {
 		if _, err := os.Stat(cfg.IntermediatesPath); err != nil {
@@ -128,6 +156,28 @@ func (p *Plugin) Configure(_ context.Context, req *configv1.ConfigureRequest) (*
 		}
 	}
 
+	// Decode optional hex cert ID.
+	var certID []byte
+	if cfg.CertID != "" {
+		var err error
+		certID, err = hex.DecodeString(cfg.CertID)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"cert_id is not valid hex: %v", err)
+		}
+	}
+
+	// Decode optional hex intermediates ID.
+	var intermediatesID []byte
+	if cfg.IntermediatesID != "" {
+		var err error
+		intermediatesID, err = hex.DecodeString(cfg.IntermediatesID)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"intermediates_id is not valid hex: %v", err)
+		}
+	}
+
 	// Open PKCS#11 session.
 	client, err := pkcs11client.NewClient(&pkcs11client.Config{
 		ModulePath: cfg.ModulePath,
@@ -141,8 +191,8 @@ func (p *Plugin) Configure(_ context.Context, req *configv1.ConfigureRequest) (*
 			"failed to open PKCS#11 session: %v", err)
 	}
 
-	// Load certificates.
-	certs, err := loadCertificateChain(cfg.CertificatePath, cfg.IntermediatesPath)
+	// Load certificates (file or PKCS#11 depending on config).
+	certs, err := loadCerts(cfg, certID, intermediatesID, client)
 	if err != nil {
 		client.Close()
 		return nil, status.Errorf(codes.InvalidArgument,
@@ -253,33 +303,54 @@ func (p *Plugin) AidAttestation(stream nodeattestoragentv1.NodeAttestor_AidAttes
 	return nil
 }
 
-// loadCertificateChain reads PEM-encoded certificates from the given paths
-// and returns them as a slice of DER-encoded byte slices.  The leaf certificate
-// must be the first PEM block in certPath.
-func loadCertificateChain(certPath, intermediatesPath string) ([][]byte, error) {
-	certs, err := loadPEMCerts(certPath)
-	if err != nil {
-		return nil, fmt.Errorf("certificate_path: %w", err)
-	}
-	if len(certs) == 0 {
-		return nil, fmt.Errorf("no certificates found in %s", certPath)
-	}
+// loadCerts builds the DER certificate chain from either PEM files or the
+// PKCS#11 token, depending on which config fields are populated.
+func loadCerts(cfg *pluginConfig, certID, intermediatesID []byte, client *pkcs11client.Client) ([][]byte, error) {
+	var leafDER []byte
 
-	if intermediatesPath != "" {
-		intermediates, err := loadPEMCerts(intermediatesPath)
+	if cfg.CertificatePath != "" {
+		// File mode: existing behaviour.
+		fileCerts, err := loadPEMCerts(cfg.CertificatePath)
 		if err != nil {
-			return nil, fmt.Errorf("intermediates_path: %w", err)
+			return nil, fmt.Errorf("certificate_path: %w", err)
 		}
-		certs = append(certs, intermediates...)
+		if len(fileCerts) == 0 {
+			return nil, fmt.Errorf("no certificates found in %s", cfg.CertificatePath)
+		}
+		leafDER = fileCerts[0]
+	} else {
+		// PKCS#11 mode: load leaf cert from the token.
+		der, err := client.LoadCertificate(certID, cfg.CertLabel)
+		if err != nil {
+			return nil, fmt.Errorf("load leaf certificate from PKCS#11: %w", err)
+		}
+		leafDER = der
 	}
 
 	// Validate the leaf certificate.
-	leaf, err := x509.ParseCertificate(certs[0])
+	leaf, err := x509.ParseCertificate(leafDER)
 	if err != nil {
 		return nil, fmt.Errorf("parse leaf certificate: %w", err)
 	}
 	if leaf.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
 		return nil, fmt.Errorf("leaf certificate does not have digitalSignature key usage")
+	}
+
+	certs := [][]byte{leafDER}
+
+	// Load intermediate certificates.
+	if cfg.IntermediatesPath != "" {
+		intermediates, err := loadPEMCerts(cfg.IntermediatesPath)
+		if err != nil {
+			return nil, fmt.Errorf("intermediates_path: %w", err)
+		}
+		certs = append(certs, intermediates...)
+	} else if len(intermediatesID) > 0 || cfg.IntermediatesLabel != "" {
+		der, err := client.LoadCertificate(intermediatesID, cfg.IntermediatesLabel)
+		if err != nil {
+			return nil, fmt.Errorf("load intermediate certificate from PKCS#11: %w", err)
+		}
+		certs = append(certs, der)
 	}
 
 	return certs, nil

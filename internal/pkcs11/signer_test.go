@@ -1,11 +1,13 @@
 package pkcs11
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"testing"
 )
 
@@ -63,6 +65,68 @@ func TestNewClient_KeyNotFound(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for non-existent key, got nil")
+	}
+}
+
+func TestLoadCertificate(t *testing.T) {
+	env := SetupSoftHSM(t)
+
+	if !env.CertImportedToToken {
+		t.Skip("pkcs11-tool not in PATH; cert not imported to token — skipping")
+	}
+
+	client, err := NewClient(&Config{
+		ModulePath: env.ModulePath,
+		TokenLabel: env.TokenLabel,
+		PIN:        env.PIN,
+		KeyID:      env.KeyID,
+		KeyLabel:   env.KeyLabel,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer client.Close()
+
+	// Fallback path: certID=nil, certLabel="" → uses keyID/keyLabel.
+	der, err := client.LoadCertificate(nil, "")
+	if err != nil {
+		t.Fatalf("LoadCertificate (fallback): %v", err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parse DER from token: %v", err)
+	}
+	if cert.Subject.CommonName != "test-node" {
+		t.Errorf("CN = %q, want %q", cert.Subject.CommonName, "test-node")
+	}
+
+	// Explicit certID path — must return identical bytes.
+	der2, err := client.LoadCertificate(env.KeyID, "")
+	if err != nil {
+		t.Fatalf("LoadCertificate (explicit ID): %v", err)
+	}
+	if !bytes.Equal(der, der2) {
+		t.Error("explicit certID lookup returned different DER than fallback")
+	}
+}
+
+func TestLoadCertificate_NotFound(t *testing.T) {
+	env := SetupSoftHSM(t)
+
+	client, err := NewClient(&Config{
+		ModulePath: env.ModulePath,
+		TokenLabel: env.TokenLabel,
+		PIN:        env.PIN,
+		KeyID:      env.KeyID,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer client.Close()
+
+	_, err = client.LoadCertificate([]byte{0xff, 0xfe}, "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for non-existent cert, got nil")
 	}
 }
 

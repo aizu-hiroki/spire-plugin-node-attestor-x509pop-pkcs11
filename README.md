@@ -24,7 +24,7 @@ Enables hardware-backed node identity via PKCS#11 tokens (HSM, smartcard, YubiKe
 
 ## Overview
 
-Standard x509pop reads the private key from a PEM file.  This plugin keeps the private key inside a PKCS#11 token so it never leaves the hardware boundary.  The attestation flow is identical to x509pop — the only difference is *where* the signing key lives.
+Standard x509pop reads the private key from a PEM file.  This plugin keeps the private key inside a PKCS#11 token so it never leaves the hardware boundary.  The attestation flow is identical to x509pop — the only difference is *where* the signing key and certificate live.
 
 ```
 Agent (PKCS#11 token)              Server
@@ -45,6 +45,7 @@ Agent (PKCS#11 token)              Server
 - **No CGo** — uses [purego](https://github.com/ebitengine/purego) on Unix and `syscall` on Windows for dynamic PKCS#11 library loading.
 - **Cross-platform** — macOS (external HSM via PKCS#11), Linux, Windows.
 - **Multi-algorithm** — ECDSA P-256 / P-384 / P-521 and RSA (PKCS#1 v1.5).
+- **Certificate on token** — the node certificate can be stored as a `CKO_CERTIFICATE` object on the token alongside the private key, eliminating all on-disk credential files.
 - **SoftHSM2 compatible** — full end-to-end testing without physical hardware.
 
 ---
@@ -58,6 +59,8 @@ Agent (PKCS#11 token)              Server
 | PKCS#11 library | SoftHSM2, YubiKey PKCS#11, or any compliant library |
 
 For testing only: [SoftHSM2](https://github.com/opendnssec/SoftHSMv2) + `softhsm2-util`
+
+For PKCS#11 certificate storage (optional): `pkcs11-tool` from [OpenSC](https://github.com/OpenSC/OpenSC)
 
 ---
 
@@ -97,21 +100,55 @@ NodeAttestor "x509pop_pkcs11" {
 
 ### Agent (`spire-agent.conf`)
 
+There are two ways to provide the node certificate to the plugin.
+
+#### Option A — certificate stored on the PKCS#11 token (recommended)
+
+Store the certificate as a `CKO_CERTIFICATE` object on the same token as the
+private key.  Omit `certificate_path` and the plugin loads the certificate
+directly from the token using `key_id` / `key_label` as the lookup identifier.
+
 ```hcl
 NodeAttestor "x509pop_pkcs11" {
   plugin_cmd = "/usr/local/bin/nodeattestor-pkcs11-agent"
   plugin_data {
-    # PKCS#11 library path.
     module_path = "/usr/lib/softhsm/libsofthsm2.so"
-
-    # Token label (set during token initialisation).
     token_label = "spire-node"
 
     # User PIN — prefer pin_env for production.
     # pin = "1234"
     pin_env = "PKCS11_PIN"
 
-    # Key identifier (hex) and/or label.
+    # Key identifier (hex) and/or label — also used to find the certificate.
+    key_id    = "01"
+    key_label = "node-key"
+
+    # certificate_path is omitted; cert is loaded from the token.
+
+    # Optional: override the certificate lookup identifier if it differs
+    # from key_id / key_label.
+    # cert_id    = "02"
+    # cert_label = "node-cert"
+
+    # Optional: load an intermediate certificate from the token.
+    # intermediates_id    = "03"
+    # intermediates_label = "intermediate-cert"
+  }
+}
+```
+
+#### Option B — certificate stored on disk (existing behaviour)
+
+```hcl
+NodeAttestor "x509pop_pkcs11" {
+  plugin_cmd = "/usr/local/bin/nodeattestor-pkcs11-agent"
+  plugin_data {
+    module_path = "/usr/lib/softhsm/libsofthsm2.so"
+    token_label = "spire-node"
+
+    # pin = "1234"
+    pin_env = "PKCS11_PIN"
+
     key_id    = "01"
     key_label = "node-key"
 
@@ -191,13 +228,34 @@ softhsm2-util --import node.key.p8.pem \
   --token "spire-node" --label "node-key" --id 01 --pin 1234
 ```
 
-### 4. Run tests
+### 4. (Optional) Import the node certificate into SoftHSM2
+
+To use PKCS#11-based certificate loading (Option A above), write the certificate
+as a `CKO_CERTIFICATE` object onto the token.  This requires `pkcs11-tool` from
+[OpenSC](https://github.com/OpenSC/OpenSC).
+
+```bash
+# Convert certificate to DER format
+openssl x509 -in node.crt -outform DER -out node.crt.der
+
+# Write the certificate object to the token with the same id / label as the key
+pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so \
+  --token-label "spire-node" --login --pin 1234 \
+  --write-object node.crt.der --type cert \
+  --id 01 --label "node-key"
+```
+
+After this step `certificate_path` can be omitted from the agent configuration.
+
+### 5. Run tests
 
 ```bash
 go test ./...
 ```
 
 SoftHSM2-dependent tests are automatically skipped when the library is not found.
+Tests that exercise PKCS#11 certificate loading are skipped when `pkcs11-tool`
+is not in `PATH`.
 
 ---
 
