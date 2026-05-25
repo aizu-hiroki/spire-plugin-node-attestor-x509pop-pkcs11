@@ -5,8 +5,8 @@ go 1.26
 require (
 	github.com/ebitengine/purego v0.10.0
 	github.com/hashicorp/hcl v1.0.0
-	github.com/spiffe/spire-plugin-sdk v1.14.6
-	google.golang.org/grpc v1.81.0
+	github.com/spiffe/spire-plugin-sdk v1.15.0
+	google.golang.org/grpc v1.81.1
 )
 
 require (
