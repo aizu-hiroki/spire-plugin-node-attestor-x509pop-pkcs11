@@ -3,9 +3,9 @@ module github.com/aizu-hiroki/spire-plugin-node-attestor-x509pop-pkcs11
 go 1.26
 
 require (
-	github.com/ebitengine/purego v0.10.0
+	github.com/ebitengine/purego v0.10.1
 	github.com/hashicorp/hcl v1.0.0
-	github.com/spiffe/spire-plugin-sdk v1.15.0
+	github.com/spiffe/spire-plugin-sdk v1.15.1
 	google.golang.org/grpc v1.81.1
 )
 
