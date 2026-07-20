@@ -5,8 +5,8 @@ go 1.26
 require (
 	github.com/ebitengine/purego v0.10.1
 	github.com/hashicorp/hcl v1.0.0
-	github.com/spiffe/spire-plugin-sdk v1.15.1
-	google.golang.org/grpc v1.81.1
+	github.com/spiffe/spire-plugin-sdk v1.15.2
+	google.golang.org/grpc v1.82.1
 )
 
 require (
@@ -19,9 +19,9 @@ require (
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/mitchellh/go-testing-interface v0.0.0-20171004221916-a61a99592b77 // indirect
 	github.com/oklog/run v1.0.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
+	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
