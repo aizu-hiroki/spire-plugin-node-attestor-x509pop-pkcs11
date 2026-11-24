@@ -68,10 +68,10 @@ For PKCS#11 certificate storage (optional): `pkcs11-tool` from [OpenSC](https://
 
 ```bash
 # Agent binary
-go build -o nodeattestor-pkcs11-agent ./cmd/nodeattestor-pkcs11-agent
+go build -o spire-plugin-pkcs11-agent ./cmd/nodeattestor-pkcs11-agent
 
 # Server binary
-go build -o nodeattestor-pkcs11-server ./cmd/nodeattestor-pkcs11-server
+go build -o spire-plugin-pkcs11-server ./cmd/nodeattestor-pkcs11-server
 
 # Or use Make (cross-compile with GOOS/GOARCH)
 make
@@ -87,7 +87,7 @@ The agent binary does **not** require CGo (`CGO_ENABLED=0` works on all platform
 
 ```hcl
 NodeAttestor "x509pop_pkcs11" {
-  plugin_cmd = "/usr/local/bin/nodeattestor-pkcs11-server"
+  plugin_cmd = "/usr/local/bin/spire-plugin-pkcs11-server"
   plugin_data {
     # Path to PEM file containing trusted CA certificate(s).
     ca_bundle_path = "/opt/spire/conf/server/ca.pem"
@@ -110,7 +110,7 @@ directly from the token using `key_id` / `key_label` as the lookup identifier.
 
 ```hcl
 NodeAttestor "x509pop_pkcs11" {
-  plugin_cmd = "/usr/local/bin/nodeattestor-pkcs11-agent"
+  plugin_cmd = "/usr/local/bin/spire-plugin-pkcs11-agent"
   plugin_data {
     module_path = "/usr/lib/softhsm/libsofthsm2.so"
     token_label = "spire-node"
@@ -141,7 +141,7 @@ NodeAttestor "x509pop_pkcs11" {
 
 ```hcl
 NodeAttestor "x509pop_pkcs11" {
-  plugin_cmd = "/usr/local/bin/nodeattestor-pkcs11-agent"
+  plugin_cmd = "/usr/local/bin/spire-plugin-pkcs11-agent"
   plugin_data {
     module_path = "/usr/lib/softhsm/libsofthsm2.so"
     token_label = "spire-node"
@@ -209,10 +209,12 @@ openssl req -new -x509 -key ca.key -out ca.crt -days 3650 \
   -subj "/CN=My SPIRE CA"
 
 # Node key and certificate signed by the CA
+# (the plugin requires the digitalSignature key usage on the leaf)
 openssl ecparam -name prime256v1 -genkey -noout -out node.key
 openssl req -new -key node.key -out node.csr -subj "/CN=my-node"
 openssl x509 -req -in node.csr -CA ca.crt -CAkey ca.key \
-  -CAcreateserial -out node.crt -days 365
+  -CAcreateserial -out node.crt -days 365 \
+  -extfile <(printf "keyUsage=critical,digitalSignature\n")
 ```
 
 ### 3. Import the node key into SoftHSM2
@@ -263,8 +265,9 @@ is not in `PATH`.
 
 Any PKCS#11-compliant device should work provided it exposes `CKM_ECDSA` or
 `CKM_RSA_PKCS`.  SoftHSM2 is the only device verified by the automated test
-suite.  See [docs/hardware_setup.md](docs/hardware_setup.md) for generic setup
-instructions.
+suite in CI; YubiKey 5 Series is covered by opt-in integration tests
+(`make test-yubikey`).  See [docs/hardware_setup.md](docs/hardware_setup.md)
+for generic and YubiKey setup instructions.
 
 ---
 
@@ -274,7 +277,7 @@ instructions.
 |----------|-------------|
 | [docs/architecture.md](docs/architecture.md) | Internal design, No CGo approach, attestation flow |
 | [docs/pkcs11_abi.md](docs/pkcs11_abi.md) | PKCS#11 ABI cross-platform details (CK_ULONG, struct packing) |
-| [docs/hardware_setup.md](docs/hardware_setup.md) | YubiKey 5 Series, SoftHSM2, and generic PKCS#11 device setup |
+| [docs/hardware_setup.md](docs/hardware_setup.md) | YubiKey 5 Series and generic PKCS#11 device setup |
 | [docs/node_attestation_flowchart.md](docs/node_attestation_flowchart.md) | Sequence diagram |
 
 ---

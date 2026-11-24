@@ -48,8 +48,8 @@ const nonceLength = 32
 
 // pluginConfig holds the parsed HCL configuration.
 type pluginConfig struct {
-	CABundlePath     string `hcl:"ca_bundle_path"`
-	AllowReattest    bool   `hcl:"allow_reattestation"`
+	CABundlePath  string `hcl:"ca_bundle_path"`
+	AllowReattest bool   `hcl:"allow_reattestation"`
 }
 
 // Plugin is the server-side x509pop_pkcs11 node attestation plugin.
@@ -292,7 +292,7 @@ func loadCABundle(path string) (*x509.CertPool, error) {
 }
 
 // AgentID returns the SPIFFE agent ID for the given leaf certificate.
-// Format: spiffe://<trust-domain>/spire/agent/x509pop_pkcs11/<sha1-fingerprint>
+// Format: spiffe://<trust-domain>/spire/agent/x509pop_pkcs11/<sha256-fingerprint>
 func AgentID(trustDomain string, leaf *x509.Certificate) string {
 	fingerprint := sha256.Sum256(leaf.Raw)
 	return fmt.Sprintf("spiffe://%s/spire/agent/x509pop_pkcs11/%x",

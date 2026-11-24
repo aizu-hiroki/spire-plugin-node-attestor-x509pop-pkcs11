@@ -62,7 +62,7 @@ vendor's documentation. The key must be accessible via a standard PKCS#11
 The SPIRE server validates the node certificate against a CA bundle. The leaf
 certificate must have `KeyUsage: Digital Signature`.
 
-### Option A — generate a CSR from the HSM key
+### Generate a CSR from the HSM key and sign it
 
 ```bash
 # Using openssl with the pkcs11 engine (requires engine_pkcs11 / libp11)
@@ -76,15 +76,22 @@ openssl x509 -req -in node.csr -CA ca.crt -CAkey ca.key \
   -extfile <(printf "keyUsage=critical,digitalSignature\n")
 ```
 
-### Option B — import an externally generated certificate
+### Store the certificate on the token (optional)
 
-If your device allows certificate import:
+If your device allows certificate import, the certificate can be stored on the
+token next to the key instead of on disk. `pkcs11-tool` expects DER input:
 
 ```bash
+openssl x509 -in node.crt -outform DER -out node.crt.der
+
+# Use the same id and label as the key
 pkcs11-tool --module <path-to-library> \
   --token-label "<token-label>" --login \
-  --write-object node.crt --type cert --label "spire-node-cert" --id 01
+  --write-object node.crt.der --type cert --label "spire-node-key" --id 01
 ```
+
+`certificate_path` can then be omitted from the agent configuration; see the
+[README](../README.md) for the related `cert_id` / `cert_label` options.
 
 ---
 
@@ -107,7 +114,7 @@ echo "signing succeeded"
 
 ```hcl
 NodeAttestor "x509pop_pkcs11" {
-  plugin_cmd = "/usr/local/bin/nodeattestor-pkcs11-agent"
+  plugin_cmd = "/usr/local/bin/spire-plugin-pkcs11-agent"
   plugin_data {
     # Path to the PKCS#11 shared library provided by your device vendor.
     module_path = "/usr/lib/<vendor>/libpkcs11.so"
@@ -123,6 +130,7 @@ NodeAttestor "x509pop_pkcs11" {
     key_label = "spire-node-key"
 
     # Leaf certificate in PEM format (signed by the CA bundle on the server).
+    # Omit if the certificate is stored on the token.
     certificate_path = "/etc/spire/agent/node.crt.pem"
   }
 }
@@ -139,12 +147,12 @@ This section describes how to perform node attestation using a YubiKey.
 
 **macOS**
 ```bash
-brew install yubico-yubikey-manager yubico-piv-tool
+brew install ykman yubico-piv-tool
 ```
 
 **Linux (Debian/Ubuntu)**
 ```bash
-apt install yubikey-manager yubico-piv-tool
+apt install yubikey-manager yubico-piv-tool ykcs11
 # or: pip install yubikey-manager
 ```
 
@@ -206,9 +214,9 @@ ykman piv keys generate \
 **Step 2 — Generate a CSR and have it signed by the CA**
 
 ```bash
-# Generate the CSR via the pkcs11 engine
-openssl req -engine pkcs11 -keyform engine \
-  -key "pkcs11:token=YubiKey PIV #<serial>;object=PIV AUTH key;type=private" \
+# Generate the CSR via the pkcs11 engine (requires libp11)
+PKCS11_MODULE_PATH=<path-to-libykcs11> openssl req -engine pkcs11 -keyform engine \
+  -key "pkcs11:token=YubiKey PIV #<serial>;id=%01;type=private" \
   -new -out node.csr -subj "/CN=my-spire-node"
 
 # Sign with the CA (KeyUsage: digitalSignature is required)
@@ -237,7 +245,7 @@ The token label has the form `YubiKey PIV #<serial>`.
 
 ```hcl
 NodeAttestor "x509pop_pkcs11" {
-  plugin_cmd = "/usr/local/bin/nodeattestor-pkcs11-agent"
+  plugin_cmd = "/usr/local/bin/spire-plugin-pkcs11-agent"
   plugin_data {
     # macOS (Apple Silicon)
     module_path = "/opt/homebrew/lib/libykcs11.dylib"
@@ -260,7 +268,7 @@ NodeAttestor "x509pop_pkcs11" {
 
 - **libykcs11 >= 2.3.0 required**: older versions do not expose `CKO_PUBLIC_KEY` objects for ECC keys.
 - **Sessions**: one session per process. Running multiple plugin instances against the same YubiKey is not recommended.
-- **Touch policy**: the tests run with `--touch-policy never`. For production, `once` or `always` is recommended.
+- **Touch policy**: the tests run with `--touch-policy never`. For production, consider `cached` or `always`; each attestation then requires a physical touch.
 
 ---
 
@@ -274,6 +282,7 @@ NodeAttestor "x509pop_pkcs11" {
 - **Session model**: one session is opened at `Configure` time and held open
   for the lifetime of the agent process. Devices that enforce strict session
   limits may need configuration adjustments.
-- **Tested with**: SoftHSM2 on Linux, macOS, and Windows. Other PKCS#11
+- **Tested with**: SoftHSM2 on Linux, macOS, and Windows. YubiKey 5 Series is
+  covered by opt-in integration tests (`make test-yubikey`). Other PKCS#11
   devices should work if they implement the standard interface correctly, but
   have not been independently verified.

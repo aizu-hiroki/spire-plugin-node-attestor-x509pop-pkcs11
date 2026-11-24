@@ -4,8 +4,8 @@
 *.dll
 *.so
 *.dylib
-/nodeattestor-pkcs11-agent
-/nodeattestor-pkcs11-server
+/spire-plugin-pkcs11-agent
+/spire-plugin-pkcs11-server
 bin/
 out/
 

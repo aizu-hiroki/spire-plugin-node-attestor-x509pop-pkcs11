@@ -5,8 +5,8 @@
 This plugin is split into two binaries that communicate with SPIRE over gRPC:
 
 ```
-nodeattestor-pkcs11-agent   (runs inside SPIRE agent process)
-nodeattestor-pkcs11-server  (runs inside SPIRE server process)
+spire-plugin-pkcs11-agent   (launched by the SPIRE agent as a plugin process)
+spire-plugin-pkcs11-server  (launched by the SPIRE server as a plugin process)
 ```
 
 Both are thin wrappers around the SPIRE Plugin SDK. The agent binary is the interesting one — it holds the PKCS#11 session and signs challenges.
@@ -30,6 +30,7 @@ internal/pkcs11/               Pure-Go PKCS#11 client (no CGo)
   load_windows.go              syscall.LoadLibrary / GetProcAddress
   load_unix.go                 purego.Dlopen / Dlsym
   testing.go                   SoftHSM2 test fixture (SetupSoftHSM)
+  yubikey_testing.go           YubiKey test fixture (SetupYubiKey, build tag: yubikey)
 
 pkg/pkcs11attestor/
   agent/plugin.go              Configure + AidAttestation gRPC handlers
@@ -57,7 +58,7 @@ graph TB
     mod -->|raw pointer call| lib
 ```
 
-`purego.RegisterFunc` wraps a raw function pointer into a typed Go function variable. On Windows it uses the Microsoft x64 calling convention; on Unix it uses System V AMD64 ABI. The same Go call site works on all platforms.
+`purego.RegisterFunc` wraps a raw function pointer into a typed Go function variable. Calls follow the native C calling convention of the target OS and architecture, so the same Go call site works on all platforms.
 
 ---
 
@@ -75,7 +76,7 @@ sequenceDiagram
     A->>H: C_OpenSession, C_Login
     A->>H: C_FindObjects → private key handle
     A->>H: C_FindObjects + C_GetAttributeValue → public key
-    Note over A: load certificate PEM
+    Note over A: load certificate (PEM file or token)
 
     Note over S: Configure()
     Note over S: load CA bundle PEM
@@ -131,7 +132,7 @@ The server plugin uses the same key-type-aware hash selection for verification.
 ## Security considerations
 
 - The private key **never leaves the token**. Only the digest is sent to the HSM for signing.
-- The PIN is held in memory only for the duration of `C_Login`. Use `pin_env` in production to avoid storing it in config files.
+- The PIN is passed to `C_Login` once, at `Configure` time, but stays in the plugin process (parsed configuration or environment) for its lifetime. Use `pin_env` in production to avoid storing it in config files.
 - Each SPIRE agent holds its own token and certificate. The SPIFFE ID is bound to the SHA-256 fingerprint of the leaf certificate.
 
 ---
@@ -151,10 +152,9 @@ Agent SPIFFE ID  (changes on renewal)
 
 ```bash
 # 1. Node alias entry — matched by CN, not by certificate fingerprint
-spire-server entry create \
+spire-server entry create -node \
   -spiffeID spiffe://example.org/node/prod-node-01 \
-  -selector x509pop_pkcs11:subject:cn:prod-node-01 \
-  -parentID spiffe://example.org/spire/agent/x509pop_pkcs11/<hash>
+  -selector x509pop_pkcs11:subject:cn:prod-node-01
 
 # 2. Workload entry — parent is the stable node alias
 spire-server entry create \

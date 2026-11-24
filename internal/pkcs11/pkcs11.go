@@ -23,13 +23,13 @@ const (
 
 	CKU_USER = 1
 
-	CKA_CLASS          = 0x00000000
-	CKA_ID             = 0x00000102
-	CKA_LABEL          = 0x00000003
-	CKA_KEY_TYPE       = 0x00000100
-	CKA_EC_PARAMS      = 0x00000180
-	CKA_EC_POINT       = 0x00000181
-	CKA_MODULUS        = 0x00000120
+	CKA_CLASS           = 0x00000000
+	CKA_ID              = 0x00000102
+	CKA_LABEL           = 0x00000003
+	CKA_KEY_TYPE        = 0x00000100
+	CKA_EC_PARAMS       = 0x00000180
+	CKA_EC_POINT        = 0x00000181
+	CKA_MODULUS         = 0x00000120
 	CKA_PUBLIC_EXPONENT = 0x00000122
 
 	CKO_CERTIFICATE = 0x00000001
@@ -46,7 +46,6 @@ const (
 
 	CKR_OK = 0
 )
-
 
 // Module represents a loaded PKCS#11 module.
 type Module struct {

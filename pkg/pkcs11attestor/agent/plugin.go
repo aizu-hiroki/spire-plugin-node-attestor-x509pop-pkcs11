@@ -52,8 +52,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/hashicorp/hcl"
 	pkcs11client "github.com/aizu-hiroki/spire-plugin-node-attestor-x509pop-pkcs11/internal/pkcs11"
+	"github.com/hashicorp/hcl"
 	nodeattestoragentv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/agent/nodeattestor/v1"
 	configv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/service/common/config/v1"
 	"google.golang.org/grpc/codes"
@@ -67,7 +67,7 @@ type pluginConfig struct {
 	TokenLabel string `hcl:"token_label"`
 	PIN        string `hcl:"pin"`
 	PINEnv     string `hcl:"pin_env"`
-	KeyID      string `hcl:"key_id"`   // hex-encoded CKA_ID
+	KeyID      string `hcl:"key_id"` // hex-encoded CKA_ID
 	KeyLabel   string `hcl:"key_label"`
 
 	// File-based certificate paths (optional; existing behaviour).

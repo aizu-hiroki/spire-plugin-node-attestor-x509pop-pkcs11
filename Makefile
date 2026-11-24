@@ -86,8 +86,8 @@ lint:
 # test key and certificate.
 #
 # Prerequisites (see docs/hardware_setup.md — YubiKey 5 Series section):
-#   macOS:   brew install yubico-yubikey-manager yubico-piv-tool
-#   Linux:   apt install yubikey-manager yubico-piv-tool
+#   macOS:   brew install ykman yubico-piv-tool
+#   Linux:   apt install yubikey-manager yubico-piv-tool ykcs11
 #   Windows: install Yubico PIV Tool + YubiKey Manager from yubico.com
 #
 # Optional env vars:
