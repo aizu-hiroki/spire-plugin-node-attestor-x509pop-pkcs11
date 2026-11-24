@@ -132,8 +132,8 @@ NodeAttestor "x509pop_pkcs11" {
 
 ## YubiKey 5 Series
 
-YubiKey 5 シリーズは PIV アプリケーションを通じて PKCS#11 インターフェースを提供します。
-このセクションでは YubiKey を使って node attestation を行うための手順を説明します。
+The YubiKey 5 Series provides a PKCS#11 interface through its PIV application.
+This section describes how to perform node attestation using a YubiKey.
 
 ### Prerequisites
 
@@ -145,54 +145,54 @@ brew install yubico-yubikey-manager yubico-piv-tool
 **Linux (Debian/Ubuntu)**
 ```bash
 apt install yubikey-manager yubico-piv-tool
-# または pip install yubikey-manager
+# or: pip install yubikey-manager
 ```
 
 **Windows**
 
-Yubico 公式サイトから以下をインストールしてください:
-- [Yubico PIV Tool](https://developers.yubico.com/yubico-piv-tool/) (libykcs11.dll を含む)
-- [YubiKey Manager](https://www.yubico.com/support/download/yubikey-manager/) (ykman コマンド)
+Install the following from the official Yubico website:
+- [Yubico PIV Tool](https://developers.yubico.com/yubico-piv-tool/) (includes libykcs11.dll)
+- [YubiKey Manager](https://www.yubico.com/support/download/yubikey-manager/) (provides the `ykman` command)
 
 ### Library paths
 
-| OS | ライブラリパス |
+| OS | Library path |
 |----|--------------|
 | macOS (Apple Silicon) | `/opt/homebrew/lib/libykcs11.dylib` |
 | macOS (Intel) | `/usr/local/lib/libykcs11.dylib` |
 | Linux (x86\_64) | `/usr/lib/x86_64-linux-gnu/libykcs11.so` |
-| Linux (other) | `/usr/lib/libykcs11.so` または `/usr/local/lib/libykcs11.so` |
+| Linux (other) | `/usr/lib/libykcs11.so` or `/usr/local/lib/libykcs11.so` |
 | Windows | `C:\Program Files\Yubico\Yubico PIV Tool\bin\libykcs11.dll` |
 
-**Minimum version**: libykcs11 >= 2.3.0 が必要です。旧バージョンでは `CKO_PUBLIC_KEY`
-オブジェクトが公開されず、プラグインの接続確立に失敗します。
+**Minimum version**: libykcs11 >= 2.3.0 is required. Older versions do not
+expose `CKO_PUBLIC_KEY` objects, which causes the plugin to fail to connect.
 
 ### PIV slot layout
 
-このプラグインは PIV slot **9a (Authentication)** を使用します。
-ykcs11 は slot 9a を `CKA_ID = 0x01` にマップします。SPIRE 設定では `key_id = "01"` を指定してください。
+This plugin uses PIV slot **9a (Authentication)**.
+ykcs11 maps slot 9a to `CKA_ID = 0x01`, so set `key_id = "01"` in the SPIRE configuration.
 
 ### Integration tests
 
-> **WARNING**: テストを実行すると PIV slot 9a の鍵と証明書が上書きされます。
-> 本番認証情報を保持している YubiKey では実行しないでください。
+> **WARNING**: Running the tests overwrites the key and certificate in PIV slot 9a.
+> Do not run them on a YubiKey that holds production credentials.
 
 ```bash
-# YubiKey を USB 接続した状態で実行
+# Run with the YubiKey connected via USB
 make test-yubikey
 
-# PIN が 123456 以外の場合
+# If the PIN is not 123456
 YUBIKEY_PIN=mypin make test-yubikey
 
-# Management key を変更している場合
+# If the management key has been changed
 YUBIKEY_MANAGEMENT_KEY=<hex-key> make test-yubikey
 ```
 
-テストは YubiKey が接続されていない場合や必要なツールがない場合は自動的にスキップされます。
+The tests are skipped automatically if no YubiKey is connected or the required tools are missing.
 
 ### Manual setup (production)
 
-**Step 1 — YubiKey 上で鍵を生成する**
+**Step 1 — Generate a key on the YubiKey**
 
 ```bash
 ykman piv keys generate \
@@ -203,49 +203,49 @@ ykman piv keys generate \
   9a pubkey.pem
 ```
 
-**Step 2 — CSR を生成して CA に署名してもらう**
+**Step 2 — Generate a CSR and have it signed by the CA**
 
 ```bash
-# pkcs11 エンジン経由で CSR を生成
+# Generate the CSR via the pkcs11 engine
 openssl req -engine pkcs11 -keyform engine \
   -key "pkcs11:token=YubiKey PIV #<serial>;object=PIV AUTH key;type=private" \
   -new -out node.csr -subj "/CN=my-spire-node"
 
-# CA で署名 (KeyUsage: digitalSignature が必須)
+# Sign with the CA (KeyUsage: digitalSignature is required)
 openssl x509 -req -in node.csr -CA ca.crt -CAkey ca.key \
   -CAcreateserial -out node.crt -days 365 \
   -extfile <(printf "keyUsage=critical,digitalSignature\n")
 ```
 
-**Step 3 — 証明書を YubiKey にインポートする**
+**Step 3 — Import the certificate into the YubiKey**
 
 ```bash
 ykman piv certificates import --management-key <mgmt-key> --pin <pin> 9a node.crt
 ```
 
-**Step 4 — トークンラベルを確認する**
+**Step 4 — Find the token label**
 
 ```bash
 pkcs11-tool --module <path-to-libykcs11> --list-tokens
-# または
-ykman list  # シリアル番号が表示される
+# or
+ykman list  # shows the serial number
 ```
 
-トークンラベルは `YubiKey PIV #<serial>` 形式です。
+The token label has the form `YubiKey PIV #<serial>`.
 
-**Step 5 — SPIRE agent を設定する**
+**Step 5 — Configure the SPIRE agent**
 
 ```hcl
 NodeAttestor "x509pop_pkcs11" {
   plugin_cmd = "/usr/local/bin/nodeattestor-pkcs11-agent"
   plugin_data {
-    # macOS Apple Silicon の場合
+    # macOS (Apple Silicon)
     module_path = "/opt/homebrew/lib/libykcs11.dylib"
 
-    # ykman list または pkcs11-tool --list-tokens で確認
+    # Check with `ykman list` or `pkcs11-tool --list-tokens`
     token_label = "YubiKey PIV #12345678"
 
-    # PIN は環境変数で渡すことを推奨
+    # Passing the PIN via an environment variable is recommended
     pin_env = "PKCS11_PIN"
 
     # slot 9a = CKA_ID 0x01
@@ -258,9 +258,9 @@ NodeAttestor "x509pop_pkcs11" {
 
 ### Known limitations
 
-- **libykcs11 >= 2.3.0 必須**: 旧版は ECC 鍵の `CKO_PUBLIC_KEY` オブジェクトを公開しない
-- **セッション**: 1プロセスにつき1セッション。同一 YubiKey への複数プラグインインスタンスは非推奨
-- **touch policy**: テストは `--touch-policy never` で実行される。本番環境では `once` または `always` を推奨
+- **libykcs11 >= 2.3.0 required**: older versions do not expose `CKO_PUBLIC_KEY` objects for ECC keys.
+- **Sessions**: one session per process. Running multiple plugin instances against the same YubiKey is not recommended.
+- **Touch policy**: the tests run with `--touch-policy never`. For production, `once` or `always` is recommended.
 
 ---
 
